@@ -74,32 +74,31 @@ class VGGNet(object):
 
 		current = tf.reshape(current, [-1, 7*7*512])
 
-		current = fc(current, 7*7*512, 4096, 'fc6')
+		current = fc(current, 7*7*512, 4096, self.KEEP_PROB, 'fc6')
 		self.net['fc6'] = current
-		current = fc(current, 4096, 4096, 'fc7')
+		current = fc(current, 4096, 4096, self.KEEP_PROB, 'fc7')
 		self.net['fc7'] = current
-		current = fc(current, 4096, self.NUM_CLASSES, 'fc8')
+		current = fc(current, 4096, self.NUM_CLASSES, self.KEEP_PROB, 'fc8')
 		self.net['fc8'] = current
 
 
 	def load_initial_weights(self, session):
 		
-		weights_dict = np.load(self.WEIGHTS_PATH, encoding='bytes').item()
+		weights_dict = np.load(self.WEIGHTS_PATH).item()
 
 		
 		for op_name in weights_dict:
 			if op_name not in self.SKIP_LAYER:
 		
 				with tf.variable_scope(op_name, reuse=True):
-					for data in weights_dict[op_name]:
-					
-						if len(data.shape) == 1:
-							var = tf.get_variable('biases', trainable=False)
-							session.run(var.assign(data))
+					data1 = weights_dict[op_name][0]
+					data2 = weights_dict[op_name][1]
+						
+					var = tf.get_variable('weights', trainable=False)
+					session.run(var.assign(data1))
 
-						else:
-							var = tf.get_variable('weights', trainable=False)
-							session.run(var.assign(data))
+					var = tf.get_variable('biases', trainable=False)
+					session.run(var.assign(data2))
 
 		return 
 							
@@ -133,7 +132,7 @@ def max_pool(x, filter_size, stride, name, padding="SAME"):
 							strides=[1, stride, stride, 1],
 							padding=padding, name=name)
 
-def fc(x, num_in, num_out, name):
+def fc(x, num_in, num_out, keep_prob, name):
 	with tf.variable_scope(name) as scope:
 		weights = tf.get_variable('weights', shape=[num_in, num_out])
 		biases = tf.get_variable('biases', [num_out])
@@ -141,32 +140,38 @@ def fc(x, num_in, num_out, name):
 		act = tf.nn.xw_plus_b(x, weights, biases, name=scope.name)
 
 		
-	return tf.nn.relu(act)
+	act = tf.nn.relu(act)
+	return tf.nn.dropout(act,keep_prob) 
 
 
 
 
 
-def test_forward():
+def test_forward(num_classes, image_path, weights_path='DEFAULT'):
 
 	x = tf.Variable(tf.truncated_normal([1, 224, 224, 3]))
 	kp = tf.placeholder(tf.float32)
 	
-	v = VGGNet(x, kp, 1000, [])
+	if(weights_path == 'DEFAULT'):
+		v = VGGNet(x, kp, num_classes, [])
+	else:
+		v = VGGNet(x, kp, num_classes, [], weights_path=weights_path)
 	
 	with tf.Session() as sess:
 		print 'loading initial weights'
 		v.load_initial_weights(sess)
 		print 'weights loaded'
 	
-		img = imread('../alexnet/images/honey')
+		img = imread(image_path)
 		img = imresize(img, [224, 224])
 		img = np.reshape(img, [1, 224, 224, 3])
 		sess.run(tf.assign(x, img))
 	
 		out = sess.run(v.net['fc8'], feed_dict={kp:1})
 	
-		print class_names[out.argmax()]
+	#print class_names[out.argmax()]
+	return (out, out.argmax())
 	
 	
+#print test_forward(2, 'dog.jpg', weights_path='weights.npy')
 	
